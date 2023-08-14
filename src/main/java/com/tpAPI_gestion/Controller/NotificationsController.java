@@ -26,8 +26,8 @@ public class NotificationsController {
     //Endpoint pour supprimer un budget
     @DeleteMapping("/supprimer/{id}")
     public String delete(@PathVariable int id){
-        notificationsService.delete(id);
-        return "delete successful";
+        return  notificationsService.delete(id);
+
     }
 
     //Endpoint pour Modifier un budget specifique

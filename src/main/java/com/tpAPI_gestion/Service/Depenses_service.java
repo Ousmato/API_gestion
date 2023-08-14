@@ -82,58 +82,55 @@ public class Depenses_service {
     //Methode add depenses
     public  String add(Depenses  depenses){
 
+        //Reuperer les entités depuis la base de données avec leurs id
         Periode periode = periodeRepository.findById(depenses.getPeriode().getId());
         User user = userRepository.findById(depenses.getUser().getId());
         Budget budget = budgetRepository.findById(depenses.getBudget().getId());
+
+        //creation et initiation de l'object notification
         Notifications notifications = new Notifications();
         notifications.setBudget(budget);
         notifications.setUser(user);
+
+        //verifier les alerte sur une depenses pour les enregistrer dans la class notification
+        //methode est appeller dans la class notification
         boolean alerte = notificationsService.alerte(notifications,depenses);
 
+        //verifier l'existence d'un user a travers son address mail
         if(user.getEmail() == null){
             throw new RuntimeException("L'utilisateur n'est pas valide, veuillez en choisir une autre");
         }
 
+        //verifier l'existence  de la periode avant l'enregistrement de la depense
         if(periode ==null){
             throw new RuntimeException("La periode n'est pas valide, veuillez en choisir une autre");
         }
 
-       /* Budget LastBudget = budgetRepository.findFirstByUserAndCategoryIdOrderByEndDateDesc(budget.getUser(), budget.getCategory().getId());
-        if (LastBudget != null) {
-            LocalDate lastBudgetStarDate = LastBudget.getStarDate().plusMonths(1);
-            LocalDate budgetDate = budget.getStarDate();
-
-            if (budgetDate.equals(lastBudgetStarDate) || budgetDate.isAfter(lastBudgetStarDate.plusDays(1))) {
-                int LastReliquat = LastBudget.getReliquat();
-
-
-                //recherhe le budget du mois suivant
-                Budget budgetOfMonth = budgetRepository.findByUserAndCategoryAndStarDate(budget.getUser(),budget.getCategory(),budgetDate.plusMonths(1));
-                if(budgetOfMonth!= null){
-                    int montMoisSuivant = budgetOfMonth.getAmount();
-                    int newBudget =  LastReliquat+montMoisSuivant;
-
-                    budget.setAmount(newBudget);
-                    budgetRepository.save(budget);
-                }
-            }
-        }*/
-
-                LocalDate currentDate = LocalDate.now();
+        //obtenir la date actuelle avant pour comparaison
+        LocalDate currentDate = LocalDate.now();
+        //verifier les dates du budget pour trouver un budget en cours
         if (budget.getEndDate().isBefore(currentDate) || budget.getStarDate().isAfter(currentDate)) {
             throw new RuntimeException("veillez choisir un budget en cours");
         }
-        Depenses firstDepense = depenseRepository.findFirstByBudget(budget);
+
+        //trouver la premiere depenses  associer a ce budget s'il existe
+        Depenses firstDepense = depenseRepository.findFirstByBudget(budget);//
         if (firstDepense==null){
+            //recherche du budget precedent
+            // trouve le premier en triant la liste des budget par ordre decroissant
             Budget precedentBuget = budgetRepository.findFirstByUserAndCategoryAndEndDateIsBeforeOrderByEndDateDesc
                     (budget.getUser(),budget.getCategory(),budget.getStarDate());
             if (precedentBuget!=null){
+                //ajout de l'encien reliquat au montant du nouveau budget
                 int lasReliquat = precedentBuget.getReliquat();
                 if (lasReliquat >= 0){
                     int newbudget = lasReliquat+budget.getAmount();
                     budget.setAmount(newbudget);
                     budget.setReliquat(newbudget);
                 }
+
+                //creer une notification pour alerter l'utilisateur du transfert de son du reliquat du mois precedent
+                // pour ajouter sur le montant du budget en cours
                 Notifications notificationsTransfert = new Notifications();
                 notificationsTransfert.setHeure(LocalTime.now());
                 notificationsTransfert.setBudget(precedentBuget);
@@ -142,76 +139,62 @@ public class Depenses_service {
                 notificationsTransfert.setText("votre reliquat du budget precedent qui est : "+precedentBuget.getReliquat()+" a etait ajouter au montant du budget suivant : "+budget.getAmount());
                 notificationRepository.save(notificationsTransfert);
             }
-
         }
+        //enregistrement du buget apres verification
         budgetRepository.save(budget);
 
-        /*Depenses depenses1 = depenseRepository.findByBudget(depenses.getBudget());
-        if (depenses1.getDate().isBefore(LocalDate.now()) || depenses1.getDate().isAfter(LocalDate.now())){
-            throw new RuntimeException("date not valid");
-        }*/
+        //verifier la date de la depense si c'est ne pas la date actuelle
         if (depenses.getDate().isBefore(LocalDate.now()) || depenses.getDate().isAfter(LocalDate.now())){
             throw new RuntimeException(" date not valid, please chose a valid date");
         }
 
+        // initialisation du montant et traitement des depenses en fonction des periodes
         int montant = 0;
         switch (periode.getDescription()){
             case "Journaliere" :
-               /* Depenses depenses1 = depenseRepository.findByUserAndBudgetAndPeriodeAndDate(depenses.getUser(),depenses.getBudget(),depenses.getPeriode(),depenses.getDate());
-                if( depenses1 !=null) {
-                    throw new RuntimeException("depenses deja effectue");
-                }*/
 
-
+                //vrifier la disponibliter du budget
                 if(budget.getReliquat()<depenses.getAmount()) {
                     throw new RuntimeException("Budget insuffisant "+budget.getReliquat());
                 }
                 montant = budget.getReliquat()-depenses.getAmount();
                 budget.setReliquat(montant);
 
+                //verifier le seuil du budget pour alerter l'utilisateur
                 if (montant <= budget.getSeuil()){
                     alerte = true;
                 }
-
                 break;
             case "Mensuel" :
-               /*Depenses depenses2 = depenseRepository.findFirstByUserIdAndBudgetIdAndPeriodeOrderByDateDesc(depenses.getUser().getId(),
-                       budget.getId(),depenses.getPeriode());
-                if(depenses2 != null && depenses2.getDate().plusDays(30).isAfter(LocalDate.now())) {
-                    throw new RuntimeException("vous avez deja depenser pour ce moi dans  la category " + budget.getCategory().getType());
-                }*/
+                //vrifier la disponibliter du budget
                 if (budget.getReliquat() < depenses.getAmount()) {
                     throw new RuntimeException("Budget insuffisant ");
                 }
-
                 montant = budget.getReliquat()-depenses.getAmount();
                 budget.setReliquat(montant);
 
+                //verifier le seuil du budget pour alerter l'utilisateur
                 if (montant <= budget.getSeuil()){
                     alerte = true;
                 }
-
                 break;
             case "Hebdomadaire" :
-               /* Depenses depenses3 = depenseRepository.findFirstByUserIdAndBudgetIdAndPeriodeOrderByDateDesc(depenses.getUser().getId(),
-                        budget.getId(),depenses.getPeriode());
-                if (depenses3 != null && depenses3.getDate().plusDays(7).isAfter(LocalDate.now())) {
-                    throw new RuntimeException("vous avez deja un budget en cour pour cette semmaine");
-                }*/
+                //vrifier la disponibliter du budget
                 if(budget.getReliquat()<depenses.getAmount()) {
                     throw new RuntimeException("Votre budget du moi est insuffisant "+ budget.getUser().getLastName()+ " "+ budget.getUser().getFirstName());
                 }
-
                 montant = budget.getReliquat()-depenses.getAmount();
                 budget.setReliquat(montant);
 
+                //verifier le seuil du budget pour alerter l'utilisateur
                 if (montant <= budget.getSeuil()){
                     alerte = true;
                 }
-
                 break;
         }
+        //enregistrement de la depense
         depenseRepository.save(depenses);
+        //retou
         if (!alerte)
             return "add successful";
         else
